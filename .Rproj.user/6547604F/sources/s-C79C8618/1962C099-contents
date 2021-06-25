@@ -67,7 +67,7 @@ summary(df)
 # It seems there are no missing values
 colSums(is.na(df))
 
-# Frauds are 0.173% of transactions (492 out of 284,315)
+# Frauds are 0.173% of transactions (492 out of 284,807)
 table(df$Class)
 sum(df$Class) / length(df$Class)
 
