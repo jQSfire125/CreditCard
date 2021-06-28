@@ -26,9 +26,9 @@ Due to privacy and confidentiality issues, features **_V1_** to **_V28_** are th
 
 This is a classification project. 
 
-It is recommended to use Area Under the Precision-Recall Curve (AUPRC) to measure accuracy because the classes are so unbalanced. Even though Area Under Receiver Operating Characteristic (AUROC) is more common, it is not recommended for highly unbalanced classification.
+It is recommended to use Area Under the Precision-Recall Curve (AUPRC) to measure accuracy because the classes are so unbalanced. Even though Area Under Receiver Operating Characteristic (AUROC) is more common, it is not recommended for highly unbalanced classification. AUPRC was used as the metric to measure performance in the cross-validation our models.
 
-The best results were obtained using a Extreme Gradient Boosting algorithm. The AUPRC of the best model was **XXXXX**. 
+The best results were obtained using an Adaptive Boosting Trees algorithm (adaboost). The F1 score of the best model was **0.8506** as measured on the validation set. F1 is the harmonic mean of Precision and Recall.
 
 Credit card fraud increases costs for everyone and machine learning techniques can help flag fraudulent transactions and lower costs for banks, merchants and their customers.
 
@@ -38,7 +38,7 @@ My version of the dataset was downloaded from Kaggle: https://www.kaggle.com/mlg
 
 The dataset has been collected and analysed during a research collaboration of Worldline and the Machine Learning Group (http://mlg.ulb.ac.be) of ULB (**Université Libre de Bruxelles**) on big data mining and fraud detection.
 
-I want to thank Max Kuhn (https://topepo.github.io/caret/) and DataCamp (https://www.datacamp.com)
+I want to thank Max Kuhn: https://topepo.github.io/caret/ and DataCamp: https://www.datacamp.com for their help.
 
 More details on current and past projects on related topics are available on https://www.researchgate.net/project/Fraud-detection-5 and the page of the [DefeatFraud](https://mlg.ulb.ac.be/wordpress/portfolio_page/defeatfraud-assessment-and-validation-of-deep-feature-engineering-and-learning-solutions-for-fraud-detection/) project.  
 
@@ -55,44 +55,717 @@ Yann-Aël Le Borgne, Gianluca Bontempi **_Machine Learning for Credit Card Fraud
 
 ## Overview
 
-These are the steps we will follow to go from raw dataset to model and insights:
+These are the steps I followed to go from raw dataset to model and insights:
 
-* Decompress, read, and build the dataset
+* Decompress, Read, and Build the Dataset
 * Analysis  
   * Initial Exploratory Analysis
   * Visual Analysis
-  * Data cleaning and feature engineering
-  * Modeling approach  
-    * Split the dataset
-    * Preprocess and Setup
-    * Train models
-    * Algorithm selection
-* Results and final model
-* Conclusion and insights  
+  * Data Cleaning and Feature Engineering
+  * Modeling Approach  
+    * Split the Dataset
+    * Pre-process and Setup
+    * Train Models
+    * Algorithm Selection
+* Results and Final Model
+* Conclusion and Insights  
 
 ## Read in the compressed file
+```{r library imports, include=FALSE}
+#### Note: if you have to install glmnet, choose the binary over ####
+#### the compiled version. The compiled version did not work for ####
+#### me. Write "no" when asked if you want the complied version  ####
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+if(!require(scales)) install.packages("scales", repos = "http://cran.us.r-project.org")
+if(!require(ggcorrplot)) install.packages("ggcorrplot", repos = "http://cran.us.r-project.org")
+if(!require(plyr)) install.packages("plyr", repos = "http://cran.us.r-project.org")
+if(!require(dplyr)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
+if(!require(reshape2)) install.packages("reshape2", repos = "http://cran.us.r-project.org")
+if(!require(bestNormalize)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(glmnet)) install.packages("glmnet", repos = "http://cran.us.r-project.org")
+if(!require(Matrix)) install.packages("Matrix", repos = "http://cran.us.r-project.org")
+if(!require(MLmetrics)) install.packages("MLmetrics", repos = "http://cran.us.r-project.org")
+if(!require(e1071)) install.packages("e1071", repos = "http://cran.us.r-project.org")
+if(!require(ranger)) install.packages("ranger", repos = "http://cran.us.r-project.org")
+if(!require(kernlab)) install.packages("kernlab", repos = "http://cran.us.r-project.org")
+if(!require(fastAdaboost)) install.packages("fastAdaboost", repos = "http://cran.us.r-project.org")
+
+# Library imports
+library(tidyverse)
+library(scales)
+library(ggcorrplot)
+library(plyr)
+library(dplyr)
+library(reshape2)
+library(bestNormalize)
+library(caret)
+library(glmnet)
+library(Matrix)
+library(MLmetrics)
+library(e1071)
+library(ranger)
+library(kernlab)
+library(fastAdaboost)
+```
+
+The file with the credit card data is in the same directory (the current working directory). To comply with Github limitations, the file was compressed (creditcard.csv.zip). We can read it and unzip it in one step:
+
+```{r load file}
+# Note: this process takes 1-2 minutes
+df <- read_csv("creditcard.csv.zip")
+```
+
+The readr function assigned the _numeric_ class to all our columns. We need to change the target variable _Class_ to integer:
+```{r change Class to integer}
+df$Class <- as.integer(df$Class)
+```
 
 # Analysis
+
+Our first step is to explore the data and get a sense of the way the information is presented, to get a better understanding of the features and to get ideas for data cleaning or feature engineering.
+
 ## Initial Exploratory Analysis
+
+We know that features _V1_ to _V28_ are the PCA components of the original features. We can also see the _Time_ and _Amount_ features.
+```{r head and glimpse}
+head(df)
+glimpse(df)
+```
+
+Let's take a look at the last few lines of our data as well
+```{r tail}
+tail(df)
+```
+
+_Time_ is the time in seconds between transactions and _Amount_ is the amount of the transaction. We can readily see that the values of _Amount_ are on a different scale than the other values.
+
+The dataset has 284,807 transactions and 31 columns (30 features and our target variable):
+```{r shape, echo=FALSE}
+dim(df)
+```
+
+We can see that _Time_ is 7 seconds short of 48 hours (172,800 seconds):
+```{r summary, echo=FALSE}
+summary(df)
+```
+
+We can also make a mental note that _Amount_ is skewed to the right: 75% of transactions are below € 77  and the maximum transaction is for € 25,691. This will need further exploration.
+
+There seems to be no missing values:
+```{r missing values}
+colSums(is.na(df))
+```
+
+And we can confirm that the frauds are 0.173% of the transactions (492 out of 284,807):
+```{r Class table, echo=FALSE}
+table(df$Class)
+sum(df$Class) / length(df$Class)
+```
+
+Now, let's take a look at the correlations between variables:
+
+```{r Correlations Matrix, echo=FALSE, fig.height=5, fig.width=7}
+corr <- round(cor(df), 2)
+ggcorrplot(corr, title = "Correlation Matrix",
+           type = "lower",
+           lab = TRUE,
+           lab_size = 2,
+           digits = 1,
+           tl.cex = 8,
+           outline.color = "white", 
+           ggtheme = ggplot2::theme_gray,
+           show.legend = FALSE)
+```
+
+The PCA components, per design, have no correlation with one another. Correlations between _Amount_, _Time_, and _Class_ and with the rest of the features are small.
+
+Once the correlations have been calculated, I will convert _Class_ to a factor with levels **Yes** and **No**. This will help with a couple of our plots and will be useful as well at the modeling stage when we use the caret package.
+```{r Modify Class}
+df$Class = as.factor(ifelse(df$Class == 1, "Yes", "No"))
+```
 
 ## Visual Analysis
 
+Let's now take a visual tour of the features. 
+
+We can start by taking a look at the distributions of the PCA components of the original features, columns _V1_ to _V28_:
+
+```{r Histograms PCs, echo=FALSE, fig.height=8, fig.width=7}
+d <- melt(df[, 2:29])
+ggplot(d, aes(x = value)) +
+  geom_histogram(bins = 20) +
+  facet_wrap(~variable, scales = "free_x") +
+  labs(title = "Distributions of features V1 to V28",
+       x = "Value",
+       y = "Count")
+```
+
+_V1_ to _V28_ are centered around zero as expected. We can now take a closer look at the distribution of _Time_:
+
+```{r Histogram of Time, echo=FALSE, fig.height=4, fig.width=5}
+df %>% 
+  ggplot(aes(x = Time)) +
+  geom_histogram(bins = 100, fill = "gray", color = "black") +
+  scale_x_continuous(label = comma, breaks = seq(0, 175000, 25000)) +
+  scale_y_continuous(label = comma) +
+  labs(title = "Transactions by Time",
+         x = "Time (seconds)",
+         y = "Number of Transactions")
+```
+
+Since we know the data represents transactions over 2 days, we can see the low points of both nights at around values 15,000 and 100,000. Let's look at those two slots in greater detail:
+
+```{r Histogram Night 1, echo=FALSE, fig.height=3, fig.width=4}
+df %>% 
+  filter(Time %in% (4000:27000)) %>%
+  ggplot(aes(x = Time)) +
+  geom_histogram(bins = 30, fill = "gray", color = "black") +
+  scale_x_continuous(label = comma, breaks = seq(5000, 25000, 5000)) +
+  labs(title = "Transactions, Night 1",
+       x = "Time (seconds)",
+       y = "Number of Transactions")
+```
+
+```{r Histogram Night 2, echo=FALSE, fig.height=3, fig.width=4}
+df %>% 
+  filter(Time %in% (89000:112000)) %>%
+  ggplot(aes(x = Time)) +
+  geom_histogram(bins = 30, fill = "gray", color = "black") +
+  scale_x_continuous(label = comma, breaks = seq(90000, 110000, 5000)) +
+  labs(title = "Transactions, Night 2",
+       x = "Time (seconds)",
+       y = "Number of Transactions")
+
+```
+
+It would be interesting to look at whether fraud happens more often at different times of the day. We can plot transactions by hour of the day, divided into fraudulent or not fraudulent:
+
+```{r Transactions by hour of day, echo=FALSE, fig.height=4, fig.width=5}
+df %>% 
+  mutate(hour = (Time/3600) %% 24) %>%
+  ggplot(aes(x = hour, fill = Class)) +
+  geom_density(alpha = 0.4) +
+  scale_x_continuous(limits = c(0, 24), breaks = seq(0, 24, 2)) +
+  labs(title = "Fraud by Hour of Day",
+       x = "Hour of Day",
+       y = "Density",
+       col = "Class") +
+  scale_fill_discrete(labels = c("Not Fraud", "Fraud"))
+```
+
+There seems to be more fraudulent transactions relative to valid ones in the early hours of the morning.
+
+Now, let's look at the distribution of our last feature, _Amount_:
+
+```{r Histogram of Amount, echo=FALSE, fig.height=4, fig.width=5}
+df %>% 
+  ggplot(aes(x = Amount)) +
+  geom_histogram(bins = 100, fill = "gray", color = "black") +
+  scale_x_continuous(label = comma) +
+  scale_y_continuous(label = comma) +
+  labs(title = "Transaction Amount",
+       x = "Amount (Euros)",
+       y = "Number of Transactions")
+```
+
+The skewness in the distribution is affecting our plot. Let's make the x axis logarithmic to get a better view of the distribution:
+
+```{r Hist Amount Log X, echo=FALSE, fig.height=4, fig.width=5}
+df %>% 
+  ggplot(aes(x = Amount)) +
+  geom_histogram(bins = 100, fill = "gray", color = "black") +
+  scale_x_log10() +
+  scale_y_continuous(label = comma) +
+  labs(title = "Transaction Amount",
+       x = "Amount (Euros), Log Scale",
+       y = "Number of Transactions")
+```
+
+We can make a mental note to transform this variable with a power transformation in a later step. Additionally, when we ran the code we were warned about zeroes in the _Amount_ column. Since we already know that the minimum value of the column is zero, let's see how many rows have a transaction amount of zero:
+```{r Zeroes}
+sum(df$Amount == 0)
+```
+
+**What should we do about these zeroes?**
+
+It would be interesting to talk to the creators of the dataset and find out how does it happen that the transaction value is 0? Was it a very small value that got rounded down to 0? Was it a missing value that was filled with a 0?
+
+There is a small number of them, and without more information I will keep them in. We just need to make a mental note that by keeping the zeros can not use a Box-Cox transformation on this feature. We will need to use the Yeo-Johnson power transformation.
+
 ## Data Cleaning and Feature Engineering
+
+### Data Cleaning
+Let's start by looking for duplicates in our data:
+```{r Sum duplicated}
+sum(duplicated(df))
+```
+
+And we can get rid of those rows:
+```{r Remove duplicates}
+df <- df[!duplicated(df), ]
+```
+
+In the previous step, we saw that we can get a better sense of the distribution of _Amount_ using log scale on the x axis. Let's explore using a power transformation on the data itself and create a new feature _Amount_Log_. We will use the yeojohnson function.
+```{r Yeo Johnson Transformation}
+yj_obj <- yeojohnson(df$Amount, standardize = TRUE)
+df$Amount_Log <- predict(yj_obj)
+```
+
+We can see that the resulting plot looks almost exactly like the one we made before:
+
+```{r Histogram Amount Log, echo=FALSE, fig.height=4, fig.width=5}
+df %>% 
+  ggplot(aes(x = Amount_Log)) +
+  geom_histogram(bins = 100, fill = "gray", color = "black") +
+  scale_x_continuous(label = comma) +
+  scale_y_continuous(label = comma) +
+  labs(title = "Transaction Amount (Yeo Johnson Transformation)",
+       x = "Amount_Log (Euros)",
+       y = "Number of Transactions")
+```
+
+### Feature Engineering
+The Time variable records the seconds elapsed for a given transaction from the first one in the dataset. It does not make sense to me that people making fraudulent transactions have knowledge of all the transactions taking place at that time. So any relationship would be just a coincidence.
+
+In my opinion, leaving the feature as is would just be adding noise to our dataset. But I think it could make sense to add a feature that encodes whether a transaction happened during the night, during those two ~7 hour long periods of low transactions that we discovered in our visual exploration. This intuition seems to be supported by our fraud vs no fraud by hour of day plot.
+
+We will create a new feature _Night_, that will have value of 1 if the transaction happened in either window of time or 0 otherwise.
+```{r Night Feature}
+Night <- (df$Time %in% 4000:27000) | (df$Time %in% 89000:112000) 
+df$Night <- as.integer(Night)
+```
+
+We can see that only about 8% (22,059 of 283,726) of transactions happened at "night", even though those two periods of time (a total of 12.8 hours) represent almost 27% of the time elapsed.
+```{r Night transactions}
+sum(df$Night)
+```
+
+Before we start modeling, we can drop the features we will not need. We will drop the _Time_ feature now that we have our _Night_ variable. 
+
+To avoid data leakage, we should transform our _Amount_ predictor after we split the dataset into train and test sets. So we will drop _Amount_Log_ at this moment too.
+```{r Drop Time and Amount_Log}
+df <- subset(df, select = -c(Time, Amount_Log))
+```
+
+Finally, verifiy everything looks right:
+```{r Sanity check}
+head(df)
+```
 
 ## Modeling Approach
 
+This is a binary classification problem.
+
+**Algorithms to test**
+
+We will use the following algorithms and see which one performs best:  
+
+  * Regularized Logistic Regression
+  * Support Vector Machines
+  * Random Forest Classifier
+  * Adaptive Boosting Classifier
+
+Logistic Regression is a good choice in binary classification problems like this one.
+
+Support Vector Machines can be very good sometimes at finding the rules that divide classes in classification problems. We will include it in our group of algorithms to test.
+
+Random Forest and Adaptive Boosting Classifiers are normally good choices in classification problems. They can do a good job of modeling non-linear relationships in our features.
+
+**Split the dataset**
+
+We can now split our data into train and test data. We will keep 20% for testing and we will train our models using the train split. 
+
+We have a good a mount of observations, we could use only 10% for validation but due to the huge class imbalance, I want to have more fraudulent observations in our validation set.
+
+I will not use the test data for algorithm selection. I will only use it to measure the performance of the final model. Model selection will be done using the results from cross-validation.
+
+```{r Split dataset}
+set.seed(775, sample.kind="Rounding")
+test_index <- createDataPartition(y = df$Class, 
+                                  times = 1, p = 0.20, 
+                                  list = FALSE)
+cc_train <- df[-test_index,]
+cc_test <- df[test_index,]
+```
+
+We need to make sure that the number of fraudulent transactions is similar in both sets:
+```{r Check Class balance}
+sum(cc_train$Class == "Yes") / length(cc_train$Class)
+sum(cc_test$Class == "Yes") / length(cc_test$Class)
+```
+
+**Pre-process** 
+
+I will transform the _Amount_ feature on both the train and test sets. First we fit the Yeo Johnson model in the train data and then we use that fit to transform both the train and test sets. We do not standardize the values at this point because we will do centering and scaling at the modeling stage.
+```{r Transform Amount Train Test}
+yj_obj <- yeojohnson(cc_train$Amount, standardize = FALSE)
+
+cc_train$Amount <- predict(yj_obj)
+cc_test$Amount <- predict(yj_obj, newdata = cc_test$Amount)
+```
+
+As a sanity check, I will plot the transformed data:
+
+```{r Plot train Amount YJ, echo=FALSE, fig.height=4, fig.width=5}
+cc_train %>% 
+  ggplot(aes(x = Amount)) +
+  geom_histogram(bins = 100, fill = "gray", color = "black") +
+  scale_x_continuous(label = comma) +
+  scale_y_continuous(label = comma) +
+  labs(title = "Transaction Amount (Yeo Johnson), Train Set",
+       x = "Amount_Log (Euros)",
+       y = "Number of Transactions")
+```
+
+```{r Plot test Amount YJ, echo=FALSE, fig.height=4, fig.width=5}
+cc_test %>% 
+  ggplot(aes(x = Amount)) +
+  geom_histogram(bins = 100, fill = "gray", color = "black") +
+  scale_x_continuous(label = comma) +
+  scale_y_continuous(label = comma) +
+  labs(title = "Transaction Amount (Yeo Johnson), Test Set",
+       x = "Amount_Log (Euros)",
+       y = "Number of Transactions")
+```
+
+**Setup**
+
+To better compare our models, I will use a shared trainControl object. This way we can use the exact same folds for cross-validation on all four algorithms. This is a large dataset and training takes several hours. We will use 5 folds instead of 10 to keep computation simpler.
+
+I am using prSummary to use Area Under the Precision Recall Curve (AUPRC) as the performance metric for cross-validation.
+```{r myControl}
+set.seed(111, sample.kind="Rounding")
+myFolds <- createFolds(cc_train$Class, k = 5)
+
+myControl <- trainControl(
+  summaryFunction = prSummary,
+  classProbs = TRUE,
+  verboseIter = FALSE,
+  savePredictions = TRUE,
+  index = myFolds
+)
+```
+
 ### Regularized Logistic Regression with glmnet
+
+This algorithm has two tuning parameters: alpha and lambda. 
+
+When alpha is equal to zero, the model uses Ridge regularization. When alpha is equal to 1, it uses Lasso. A value between 0 and 1 combines the two. Lambda is the regularization strength.
+
+First, we create a tuning grid:
+```{r myGrid glmnet}
+myGrid_glmnet <- expand.grid(
+  alpha = c(0, 0.5, 1),
+  lambda = seq(0.0001, 0.1, length = 10)
+)
+```
+
+An interesting fact about glmnet is that it trains all values of lambda at the same time. This feature makes this algorithm faster than others. Our next step it to train the model using this tuning grid and the shared train control object. 
+
+I am also using a pre-processing pipeline with three steps: 
+
+  * Eliminate features with no variance
+  * Center
+  * Scale
+```{r glmnet}
+model_glmnet <- train(
+  Class ~ .,
+  cc_train,
+  method = "glmnet",
+  metric = "AUC",
+  preProcess = c("zv", "center", "scale"),
+  tuneGrid = myGrid_glmnet,
+  trControl = myControl
+)
+```
+  
+We can plot the main hyper parameters. We can see that Ridge works better in this model:
+
+```{r Plot glmnet, echo=FALSE, fig.height=4, fig.width=5}
+plot(model_glmnet, main="Regularized Logistic Regression")
+```
+
+We can see the tuning parameters of the best model:
+```{r glmnet best tune, echo=FALSE}
+model_glmnet$bestTune
+```
+
+And the area under the precision-recall curve (AUC), and the Precision, Recall and F1 scores from the training data:
+
+AUPRC:
+```{r glmnet results AUC, echo=FALSE}
+model_glmnet$results$AUC
+```
+
+Precision:
+```{r glmnet results Precision, echo=FALSE}
+model_glmnet$results$Precision
+```
+
+Recall:
+```{r glmnet results Recall, echo=FALSE}
+model_glmnet$results$Recall
+```
+
+F1:
+```{r glmnet results F1, echo=FALSE}
+model_glmnet$results$F
+```
 
 ### Support Vector Machines with svmLinear
 
+Now it's time for Support Vector Machines. This algorithm has only one tuning parameter: C or cost. We first create the tuning grid:
+```{r myGrid svm}
+myGrid_svm <- data.frame(C = c(0.0001, 0.001, 0.01, 0.05, 0.1, 0.2, 0.5, 1))
+```
+
+Then we train the model using this tuning grid and the shared train control object. I am also using the same pre-processing pipeline as the previous algorithm:
+```{r svm}
+model_svm <- train(
+  Class ~ .,
+  cc_train,
+  method = "svmLinear",
+  metric = "AUC",
+  preProcess = c("zv", "center", "scale"),
+  tuneGrid = myGrid_svm,
+  trControl = myControl
+)
+```
+
+We can see how the AUC varies with different values of C:
+
+```{r Plot svm, echo=FALSE, fig.height=4, fig.width=5}
+plot(model_svm, main="Support Vector Machines")
+```
+
+We can also see the tuning parameters of the best model:
+```{r svm best tune, echo=FALSE}
+model_svm$bestTune
+```
+
+Here are the AUPRC, the Precision, Recall and F1 scores from the training data:
+
+AUPRC:
+```{r svm results AUC, echo=FALSE}
+model_svm$results$AUC
+```
+
+Precision:
+```{r svm results Precision, echo=FALSE}
+model_svm$results$Precision
+```
+
+Recall:
+```{r svm results Recall, echo=FALSE}
+model_svm$results$Recall
+```
+
+F1:
+```{r svm results F1, echo=FALSE}
+model_svm$results$F
+```
+
 ### Random Forest with ranger
 
-### Extreme Gradient Boosting with xgbTree
+I am using the **ranger** package for our random forest model. ranger has 3 tunable parameters:
+
+  * mtry: the number of randomly selected predictors to use for each tree
+  * splitrule: is the method used to choose splits in the decision trees
+  * min.node.size: used to stop splitting nodes based on the number of observations in a node
+  
+The first step is to create our tuning grid. In my tests the performance decreased as _mtry_ increased beyond 5, so I am using the range 1-5. I will use _extratrees_ as the _splitrule_ because that was the rule that worked best. I have also decided to use minimal node sizes of 1, 5, and 10. 
+```{r myGRid rf}
+myGrid_rf <- expand.grid(
+  mtry = c(1, 2, 3, 4, 5),
+  splitrule = "extratrees",
+  min.node.size = c(1, 5, 10)
+)
+```
+
+The next step is to train our model. For decision trees we do not need to center and scale our data so we will omit those steps from the pre-process pipeline.
+```{r ranger}
+model_rf <- train(
+  Class ~ .,
+  cc_train,
+  method = "ranger",
+  metric = "AUC",
+  preProcess = c("zv"),
+  tuneGrid = myGrid_rf,
+  trControl = myControl
+)
+```
+
+Here we can see how higher values of _mtry_ lower our performance:
+
+```{r Plot ranger, echo=FALSE, fig.height=4, fig.width=5}
+plot(model_rf, main="Random Forest")
+```
+
+These are the parameters for our best model:
+```{r ranger best tune, echo=FALSE}
+model_rf$bestTune
+```
+
+Finally, we have the AUPRC, the Precision, Recall and F1 scores from the training data:
+
+AUPRC:
+```{r ranger results AUPRC, echo=FALSE}
+model_rf$results$AUC
+```
+
+Precision:
+```{r ranger results Precision, echo=FALSE}
+model_rf$results$Precision
+```
+
+Recall:
+```{r ranger results Recall, echo=FALSE}
+model_rf$results$Recall
+```
+
+F1:
+```{r ranger results F1, echo=FALSE}
+model_rf$results$F
+```
+
+### Adaptive Boosting with adaboost
+
+For the final algorithm, I chose adaboost. adaboost has 3 tunable parameters:
+
+  * nIter: is the number of trees in the ensemble
+  * method: is the technique used by the algorithm
+
+Again, the first step is to create our tuning grid. I will use the default 50, 100, and 150 values for _nIter_. In my tests _Real Adaboost_ was the method that worked best.
+```{r myGrid ada}
+myGrid_ada <- expand.grid(
+  nIter = c(50, 100, 150),
+  method = "Real adaboost"
+)
+```
+
+The next step is to train the model. Like we did for random forest, we will only perform zero variance feature removal as pre-processing:
+```{r ada}
+model_ada <- train(
+  Class ~ .,
+  cc_train,
+  method = "adaboost",
+  metric = "AUC",
+  preProcess = c("zv"),
+  tuneGrid = myGrid_ada,
+  trControl = myControl
+)
+```
+
+We can see the interaction of the tuning parameters here:
+
+```{r Plot ada, echo=FALSE, fig.height=4, fig.width=5}
+plot(model_ada, main="Adaptive Boosting")
+```
+
+Here are the parameters of our best model:
+```{r ada best tune, echo=FALSE}
+model_ada$bestTune
+```
+
+And our results for adaboost:
+
+AUPRC:
+```{r ada results AUC, echo=FALSE}
+model_ada$results$AUC
+```
+
+Precision:
+```{r ada results Precision, echo=FALSE}
+model_ada$results$Precision
+```
+
+Recall:
+```{r ada results Recall, echo=FALSE}
+model_ada$results$Recall
+```
+
+F1:
+```{r ada results F1, echo=FALSE}
+model_ada$results$F
+```
 
 ### Algorithm Selection
 
+The final step is to select the algorithm that performed better. I will use the resamples function in caret to compare the performance of the 4 algorithms. Here is a complete comparison:
+```{r algorithm selection}
+model_list <- list(
+  glmnet = model_glmnet,
+  svm = model_svm,
+  rf = model_rf,
+  ada = model_ada
+)
+
+resamps <- resamples(model_list)
+
+summary(resamps)
+```
+
+To better see which algorithm performed best we can plot the results. This is the plot for the AUPRC:
+
+```{r dotplot AUC, echo=FALSE, fig.height=4, fig.width=5}
+dotplot(resamps, metric = "AUC", main = "AUPRC by model")
+```
+
+These are the Precision scores of the different models:
+
+```{r dotplot Precision, echo=FALSE, fig.height=4, fig.width=5}
+dotplot(resamps, metric = "Precision", main = "Precision by model")
+```
+
+And also the Recall scores:
+
+```{r dotplot Recall, echo=FALSE, fig.height=4, fig.width=5}
+dotplot(resamps, metric = "Recall", main = "Recall by model")
+```
+
+Finally, we can see the F1 score for each algorithm:
+
+```{r dotplot F1, echo=FALSE, fig.height=4, fig.width=5}
+dotplot(resamps, metric = "F", main = "F1 score by model")
+```
+
+Based of the F1 results, we will select the adaboost algorithm for our final model.
+
 # Results and Final Model
+
+With our algorithm selected, we can finally use our validation set to test the performance of the model in unseen data. The first step is to generate the predictions and then we build a confusion matrix: 
+```{r final model}
+final_preds <- predict(model_ada, cc_test)
+
+final_cm <- confusionMatrix(final_preds, 
+                            as.factor(cc_test$Class), 
+                            positive = "Yes")
+```
+
+Here we have our final scores for Kappa, Precision, Recall and F1.
+```{r final results, echo=FALSE}
+final_cm$overall["Kappa"]
+final_cm$byClass["Precision"]
+final_cm$byClass["Recall"]
+final_cm$byClass["F1"]
+```
 
 # Conclusion
 
+Adaptive Boosting performed better than random forest, regularized logistic regression, and support vector machines.
 
+It was really interesting to see how accuracy is not a good metric when the classes are so unbalanced. A model that predicts 0 (not fraud) for every transaction would get an accuracy of 99.82% on this dataset. Once we look at Kappa and F1, the scores are lower and we get a better sense for the relative performance of the algorithms.
+
+The best model had an F1 score of **0.8506** on the validation set using an Adaptive Boosting algorithm. F1 is the harmonic mean of Precision and Recall. 
+
+One could say that Recall/Sensitivity is the metric we need to focus on since we want to minimize fraudulent transactions. But false positives (normal transactions flagged as fraud) are also important because they interfere with a client's business, and it could also lead to lost revenue for the Bank if the client uses an alternative method of payment. That is why I focused on the F1 metric to find a balance between Precision and Recall.
+
+There are more than 280,000 transactions in the dataset. Once you run the cross-validation search over 5 folds, you end up running about 80 versions of the model for ranger, and 30 for adaboost. It took several hours to train and tune all 4 algorithms.
+
+There are many ways this model could be improved:
+
+  * Investigate the possibility of using even more data, so we can train our model with even more fraudulent transactions.
+  * With the original features, we could look into better feature engineering to try to improve the performance.
+  * Try other algorithms or even create an ensemble of different models to see if we can get better results.
+  * With a more powerful computer or cluster, run more hyper parameter tuning.

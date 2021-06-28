@@ -10,9 +10,9 @@ Due to privacy and confidentiality issues, features **_V1_** to **_V28_** are th
 
 This is a classification project. 
 
-It is recommended to use Area Under the Precision-Recall Curve (AUPRC) to measure accuracy because the classes are so unbalanced. Even though Area Under Receiver Operating Characteristic (AUROC) is more common, it is not recommended for highly unbalanced classification.
+It is recommended to use Area Under the Precision-Recall Curve (AUPRC) to measure accuracy because the classes are so unbalanced. Even though Area Under Receiver Operating Characteristic (AUROC) is more common, it is not recommended for highly unbalanced classification. AUPRC was used as the metric to measure performance in the cross-validation our models.
 
-The best results were obtained using a Extreme Gradient Boosting algorithm. The AUPRC of the best model was **XXXXX**. 
+The best results were obtained using an Adaptive Boosting Trees algorithm (adaboost). The F1 score of the best model was **0.8506** as measured on the validation set. F1 is the harmonic mean of Precision and Recall.
 
 Credit card fraud increases costs for everyone and machine learning techniques can help flag fraudulent transactions and lower costs for banks, merchants and their customers.
 
@@ -22,9 +22,9 @@ My version of the dataset was downloaded from Kaggle: https://www.kaggle.com/mlg
 
 The dataset has been collected and analysed during a research collaboration of Worldline and the Machine Learning Group (http://mlg.ulb.ac.be) of ULB (**Université Libre de Bruxelles**) on big data mining and fraud detection.
 
-I want to thank Max Kuhn (https://topepo.github.io/caret/) and DataCamp (https://www.datacamp.com)
+I want to thank Max Kuhn: https://topepo.github.io/caret/ and DataCamp: https://www.datacamp.com for their help.
 
-More details on current and past projects on related topics are available on https://www.researchgate.net/project/Fraud-detection-5 and the page of the [DefeatFraud](https://mlg.ulb.ac.be/wordpress/portfolio_page/defeatfraud-assessment-and-validation-of-deep-feature-engineering-and-learning-solutions-for-fraud-detection/) project.  
+More details on current and past projects on related topics are available on https://www.researchgate.net/project/Fraud-detection-5 and the page of the [DefeatFraud](https://mlg.ulb.ac.be/wordpress/portfolio_page/defeatfraud-assessment-and-validation-of-deep-feature-engineering-and-learning-solutions-for-fraud-detection/) project. 
 #### Please refer to the following papers:
 Andrea Dal Pozzolo, Olivier Caelen, Reid A. Johnson and Gianluca Bontempi. **_Calibrating Probability with Undersampling for Unbalanced Classification_**. In Symposium on Computational Intelligence and Data Mining (CIDM), IEEE, 2015  
 Dal Pozzolo, Andrea; Caelen, Olivier; Le Borgne, Yann-Ael; Waterschoot, Serge; Bontempi, Gianluca. **_Learned lessons in credit card fraud detection from a practitioner perspective_**, Expert systems with applications, 41,10,4915-4928,2014, Pergamon  

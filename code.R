@@ -4,12 +4,17 @@
 # 1.2 Overview
 # 1.3 Library imports
 # Make sure the user has the required packages
+
+#####################################################################
 #### Note: if you have to install glmnet, choose the binary over ####
 #### the compiled version. The compiled version did not work for ####
-#### me. Write "no" when asked if you want the complied version  ####
+#### me. Type "no" when asked if you want the complied version  ####
+#####################################################################
+
 if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
 if(!require(scales)) install.packages("scales", repos = "http://cran.us.r-project.org")
 if(!require(ggcorrplot)) install.packages("ggcorrplot", repos = "http://cran.us.r-project.org")
+if(!require(plyr)) install.packages("plyr", repos = "http://cran.us.r-project.org")
 if(!require(dplyr)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
 if(!require(reshape2)) install.packages("reshape2", repos = "http://cran.us.r-project.org")
 if(!require(bestNormalize)) install.packages("dplyr", repos = "http://cran.us.r-project.org")
@@ -20,13 +25,13 @@ if(!require(MLmetrics)) install.packages("MLmetrics", repos = "http://cran.us.r-
 if(!require(e1071)) install.packages("e1071", repos = "http://cran.us.r-project.org")
 if(!require(ranger)) install.packages("ranger", repos = "http://cran.us.r-project.org")
 if(!require(kernlab)) install.packages("kernlab", repos = "http://cran.us.r-project.org")
-if(!require(xgboost)) install.packages("xgboost", repos = "http://cran.us.r-project.org")
-if(!require(plyr)) install.packages("plyr", repos = "http://cran.us.r-project.org")
+if(!require(fastAdaboost)) install.packages("fastAdaboost", repos = "http://cran.us.r-project.org")
 
 # Library imports
 library(tidyverse)
 library(scales)
 library(ggcorrplot)
+library(plyr)
 library(dplyr)
 library(reshape2)
 library(bestNormalize)
@@ -37,8 +42,7 @@ library(MLmetrics)
 library(e1071)
 library(ranger)
 library(kernlab)
-library(xgboost)
-library(plyr)
+library(fastAdaboost)
 
 # 1.4 Read in the compressed file 
 # Note: this process takes 1-2 minutes
@@ -84,23 +88,27 @@ corr <- round(cor(df), 2)
 ggcorrplot(corr, title = "Correlation Matrix",
            type = "lower",
            lab = TRUE,
-           lab_size = 2.5,
+           lab_size = 2,
            digits = 1,
-           tl.cex = 9,
+           tl.cex = 8,
            outline.color = "white", 
            ggtheme = ggplot2::theme_gray,
            show.legend = FALSE)
 
-# 2.2 Visual Analysis
-# Change Class into a factor (It will help in caret and with some graphs)
+# Now that the correlations have been calculated, we can
+# change Class into a factor (It will help in caret and with some graphs)
 df$Class = as.factor(ifelse(df$Class == 1, "Yes", "No"))
 
+# 2.2 Visual Analysis
 # Histograms of PCA components
 # Let's first look at the distribution of our PCA variables (V1-V28)
 d <- melt(df[, 2:29])
 ggplot(d, aes(x = value)) +
   geom_histogram(bins = 20) +
-  facet_wrap(~variable, scales = "free_x")
+  facet_wrap(~variable, scales = "free_x") +
+  labs(title = "Distributions of features V1 to V28",
+       x = "Value",
+       y = "Count")
 
 # Histogram of Time Variable
 # Data is over two days. One can see the night areas with less transactions
@@ -161,7 +169,7 @@ df %>%
        y = "Number of Transactions")
 
 # Histogram of Amount with log scale on the x axis
-# Let's make the x axis logaritmic to see the distribution better
+# Let's make the x axis logarithmic to see the distribution better
 df %>% 
   ggplot(aes(x = Amount)) +
   geom_histogram(bins = 100, fill = "gray", color = "black") +
@@ -177,6 +185,7 @@ df %>%
 sum(df$Amount == 0)
 
 # 2.3 Data Cleaning and Feature Engineering
+# 2.3.1 Data Cleaning
 # Look for duplicates
 sum(duplicated(df))
 
@@ -202,6 +211,7 @@ df %>%
        x = "Amount_Log (Euros)",
        y = "Number of Transactions")
 
+# 2.3.2 Feature Engineering
 # Engineer Night Feature
 # The Time feature shows the seconds since the first transaction
 # By itself it gives little predictive information, in my opinion
@@ -209,11 +219,17 @@ df %>%
 Night <- (df$Time %in% 4000:27000) | (df$Time %in% 89000:112000) 
 df$Night <- as.integer(Night)
 
+# How many transactions happened at "night"?
+sum(df$Night)
+
 # Drop Time and Amount_Log
 # We don't need the Time feature any more
 # I will also drop Amount_Log because I will make the transformation after
 # the train/test split (to prevent data leakage)
 df <- subset(df, select = -c(Time, Amount_Log))
+
+# Verify everything looks right:
+head(df)
 
 # 2.4 Modeling Approach
 # Create a validation set (final hold-out test set)
@@ -229,7 +245,7 @@ cc_test <- df[test_index,]
 
 # Let's make sure the number of fraudulent transactions is similar
 sum(cc_train$Class == "Yes") / length(cc_train$Class)
-sum(cc_test$Class == "Yes")/ length(cc_test$Class)
+sum(cc_test$Class == "Yes") / length(cc_test$Class)
 
 # Transform Amount
 # We will transform train and test data using the fit on the train data
@@ -247,7 +263,7 @@ cc_train %>%
   geom_histogram(bins = 100, fill = "gray", color = "black") +
   scale_x_continuous(label = comma) +
   scale_y_continuous(label = comma) +
-  labs(title = "Transaction Amount (Yeo Johnson Transformation), Train Set",
+  labs(title = "Transaction Amount (Yeo Johnson), Train Set",
        x = "Amount_Log (Euros)",
        y = "Number of Transactions")
 
@@ -256,14 +272,14 @@ cc_test %>%
   geom_histogram(bins = 100, fill = "gray", color = "black") +
   scale_x_continuous(label = comma) +
   scale_y_continuous(label = comma) +
-  labs(title = "Transaction Amount (Yeo Johnson Transformation), Test Set",
+  labs(title = "Transaction Amount (Yeo Johnson), Test Set",
        x = "Amount_Log (Euros)",
        y = "Number of Transactions")
 
 # We are going to use a shared trainContol object to better compare 
 # between models. First, let's create the K folds:
 set.seed(111, sample.kind="Rounding")
-myFolds <- createFolds(cc_test$Class, k = 3)
+myFolds <- createFolds(cc_train$Class, k = 5)
 
 # Then we use those indices in our trainControl object
 # using index will make sure all models use the exact same folds for 
@@ -291,10 +307,10 @@ myGrid_glmnet <- expand.grid(
 # We can now train the model using the caret package
 # We are adding a pre-processing step that eliminates features with zero
 # variance, then centers and scales our features
-# This takes a few minutes
+# This takes a while
 model_glmnet <- train(
   Class ~ .,
-  cc_test,
+  cc_train,
   method = "glmnet",
   metric = "AUC",
   preProcess = c("zv", "center", "scale"),
@@ -303,7 +319,7 @@ model_glmnet <- train(
 )
 
 # Visualize the main hyper parameters
-# We can see that lasso regularization works better
+# We can see that Ridge regularization works better in this model
 plot(model_glmnet, main="Regularized Logistic Regression")
 
 # Results
@@ -318,17 +334,16 @@ model_glmnet$results$F
 # 2.4.2 Support Vector Machines with svmLinear
 # Now let's use a SVM model
 # svmLinear has only one tuning parameter C or cost.
-# C is the inverse of the regularization strength
 # Tuning grid for svmLinear
 myGrid_svm <- data.frame(C = c(0.0001, 0.001, 0.01, 0.05, 0.1, 0.2, 0.5, 1))
 
 # Train the model
 # We are adding a pre-processing step that eliminates features with zero
 # variance, then centers and scales our features
-# This takes a few minutes
+# This takes a while
 model_svm <- train(
   Class ~ .,
-  cc_test,
+  cc_train,
   method = "svmLinear",
   metric = "AUC",
   preProcess = c("zv", "center", "scale"),
@@ -350,27 +365,27 @@ model_svm$results$Recall
 model_svm$results$F
 
 # 2.4.3 Random Forest with ranger
-# We are going to use the ranger package for our random forest algorithm
+# We are going to use the ranger package for our random forest model
 # ranger has 3 tunable parameters: mtry, splitrule, and min.node.size
 # mtry is the number of randomly selected predictors (features)
-# splitrule is the method to chose splits in our decision tree
+# splitrule is the method to choose splits in our decision tree
 # and min.node.size is a rule that stops splitting nodes when the minimum
 # number of observations in a node is reached
 # Tuning grid for ranger
 # We ran several trials and extratrees always won for this dataset
 # Also performance decreased for larger numbers of mtry
 myGrid_rf <- expand.grid(
-  mtry = c(2, 3, 4, 5),
+  mtry = c(1, 2, 3, 4, 5),
   splitrule = "extratrees",
   min.node.size = c(1, 5, 10)
 )
 
 # Train the model
 # We don't need to scale and center for this algorithm
-# This takes a few minutes
+# This takes a while
 model_rf <- train(
   Class ~ .,
-  cc_test,
+  cc_train,
   method = "ranger",
   metric = "AUC",
   preProcess = c("zv"),
@@ -391,32 +406,41 @@ model_rf$results$Precision
 model_rf$results$Recall
 model_rf$results$F
 
-# 2.4.4 Extreme Gradient Boosting with xgbTree
-# We can now train our xgb algorithm
-# There is a large number of tunable parameters (7). To save some time we 
-# will stick with the default tuning routine.
+# 2.4.4 Adaptive Boosting with adaboost
+# We can now train our adaboost algorithm
+# adaboost has two tunable parameters
+# nIter is the number of trees in the ensemble
+# method is the method the package uses. Real adaboost worked
+# best in my trials.
+myGrid_ada <- expand.grid(
+  nIter = c(50, 100, 150),
+  method = "Real adaboost"
+)
+
+# Train the model
 # We do not need to scale for this algorithm either
-# This takes a few minutes
-model_xgb <- train(
+# This takes a while
+model_ada <- train(
   Class ~ .,
-  cc_test,
-  method = "xgbTree",
+  cc_train,
+  method = "adaboost",
   metric = "AUC",
   preProcess = c("zv"),
+  tuneGrid = myGrid_ada,
   trControl = myControl
 )
 
 # Visualize the main hyper parameters
-plot(model_xgb, main="Extreme Gradient Boosting")
+plot(model_ada, main="Adaptive Boosting")
 
 # Results
 # We can see the tuning parameters of the best model, the AUC of the PR curve,
 # the Precision, Recall and F1 scores
-model_xgb$bestTune
-model_xgb$results$AUC
-model_xgb$results$Precision
-model_xgb$results$Recall
-model_xgb$results$F
+model_ada$bestTune
+model_ada$results$AUC
+model_ada$results$Precision
+model_ada$results$Recall
+model_ada$results$F
 
 # 2.4.5 Algorithm Selection
 # We can now compare our models to choose the best performing 
@@ -425,7 +449,7 @@ model_list <- list(
   glmnet = model_glmnet,
   svm = model_svm,
   rf = model_rf,
-  xgb = model_xgb
+  ada = model_ada
 )
 
 # Then we call the function resamples on our models
@@ -449,7 +473,7 @@ dotplot(resamps, metric = "F", main = "F1 score by model")
 # 3. Results 
 # Final model
 # Now that we have chosen our model, we will use it on our test data
-final_preds <- predict(model_xgb, cc_test)
+final_preds <- predict(model_ada, cc_test)
 
 # With these predictions, we can generate the Confusion Matrix:
 final_cm <- confusionMatrix(final_preds, 
@@ -457,7 +481,7 @@ final_cm <- confusionMatrix(final_preds,
                             positive = "Yes")
 
 # And finally we calculate the Kappa coefficient, Precision, Recall and F1 score of our final model
-# For this model where 99.82% of observations are not fraut, accuracy is not a good metric
+# For this model where 99.82% of observations are not fraud, accuracy is not a good metric
 final_cm$overall["Kappa"]
 final_cm$byClass["Precision"]
 final_cm$byClass["Recall"]
